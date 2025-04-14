@@ -1,3 +1,4 @@
+// ====== IMPORTS ======
 import Map from "ol/Map.js";
 import View from "ol/View.js";
 import GeoJSON from "ol/format/GeoJSON.js";
@@ -10,13 +11,13 @@ import { fromLonLat } from "ol/proj.js";
 import OSM from "ol/source/OSM.js";
 import VectorSource from "ol/source/Vector.js";
 
-// ----- Các biến style cho WebGLVectorLayer -----
+// ====== STYLE VARIABLES ======
 const styleVariables = {
   width: 12,
   offset: 0,
   capType: "butt",
   joinType: "miter",
-  miterLimit: 10, // ratio
+  miterLimit: 10,
   dashLength1: 25,
   dashLength2: 15,
   dashLength3: 15,
@@ -30,11 +31,6 @@ const source = new VectorSource({
   format: new GeoJSON(),
 });
 
-/**
- * @param {boolean} dash Include line dash
- * @param {boolean} pattern Include image pattern
- * @return {import('ol/style/flat.js').FlatStyle} Generated style
- */
 const getStyle = (dash, pattern) => {
   let newStyle = {
     "stroke-width": ["var", "width"],
@@ -68,61 +64,56 @@ const getStyle = (dash, pattern) => {
 };
 
 let style = getStyle(false, false);
+let vector = new WebGLVectorLayer({ source, style, variables: { ...styleVariables } });
 
-let vector = new WebGLVectorLayer({
-  source,
-  style,
-  variables: { ...styleVariables },
-});
-
-// ----- Khởi tạo Map -----
 const map = new Map({
-  layers: [
-    new TileLayer({
-      source: new OSM(),
-    }),
-    vector,
-  ],
+  layers: [new TileLayer({ source: new OSM() }), vector],
   target: "map",
-  view: new View({
-    center: fromLonLat([8.43, 46.82]),
-    zoom: 7,
-  }),
+  view: new View({ center: fromLonLat([8.43, 46.82]), zoom: 7 }),
 });
 
-/**
- * Hàm rebuild style: trước khi rebuild, lưu lại các feature hiện tại từ source
- */
 const rebuildStyle = () => {
-  // Lấy trạng thái của checkbox
   const dash = document.getElementById("dashEnable").checked;
   const pattern = document.getElementById("patternEnable").checked;
-
   style = getStyle(dash, pattern);
-
   map.removeLayer(vector);
-  vector = new WebGLVectorLayer({
-    source,
-    style,
-    variables: { ...styleVariables },
-  });
+  vector = new WebGLVectorLayer({ source, style, variables: { ...styleVariables } });
   map.addLayer(vector);
 };
 
-// ----- Khởi tạo các interaction của Modify, Draw, Snap -----
+// ====== SETUP INTERACTIONS ======
 let draw, snap;
 const geoJsonFormat = new GeoJSON();
-
-// Tải lại actionHistory từ localStorage
 let actionHistory = JSON.parse(localStorage.getItem("actionHistory") || "[]");
 const modify = new Modify({ source });
 
-// Khôi phục lại các feature đã vẽ (nếu cần)
+// Load feature từ GeoJSON gốc
+source.once("change", () => {
+  if (source.getState() === "ready") {
+    actionHistory.forEach((action) => {
+      if (action.type === "modify" && action.newGeometry) {
+        const feature = source.getFeatures().find(f => f.ol_uid === action.featureId);
+        if (feature) {
+          const newGeom = geoJsonFormat.readGeometry(action.newGeometry);
+          feature.setGeometry(newGeom); // Apply new geometry
+        }
+      }
+      // Draw features from history (if they exist)
+      if (action.type === "draw") {
+        const feature = geoJsonFormat.readFeature(action.featureGeoJson);
+        source.addFeature(feature);
+        action._featureRef = feature;
+      }
+    });
+  }
+});
+
+// Draw features từ history
 actionHistory.forEach((action) => {
   if (action.type === "draw") {
     const feature = geoJsonFormat.readFeature(action.featureGeoJson);
     source.addFeature(feature);
-    action._featureRef = feature; // lưu lại tham chiếu để undo sau
+    action._featureRef = feature;
   }
 });
 
@@ -131,74 +122,63 @@ map.addInteraction(modify);
 modify.on("modifystart", (evt) => {
   evt.features.forEach((feature) => {
     const oldGeometry = geoJsonFormat.writeGeometry(feature.getGeometry());
-
-    actionHistory.push({
-      type: "modify",
-      featureId: feature.ol_uid, // sử dụng id để định danh
-      oldGeometry,
-    });
-
-    saveHistory();
+    feature.set("__modifying", true);
+    actionHistory.push({ type: "modify", featureId: feature.ol_uid, oldGeometry, newGeometry: null });
+    saveHistory();  // Save history when modification starts
   });
 });
 
-function addInteractions() {
-  draw = new Draw({
-    source: source,
-    type: "LineString",
+modify.on("modifyend", (evt) => {
+  evt.features.forEach((feature) => {
+    if (feature.get("__modifying")) {
+      const newGeometry = geoJsonFormat.writeGeometry(feature.getGeometry());
+      // Find the last action for this feature and update it with new geometry
+      const lastAction = actionHistory.find(
+        (a) => a.type === "modify" && a.featureId === feature.ol_uid && !a.newGeometry
+      );
+      if (lastAction) {
+        lastAction.newGeometry = newGeometry; // Update with new geometry
+      }
+      feature.unset("__modifying");
+      saveHistory(); // Save updated history after modification ends
+    }
   });
-  map.addInteraction(draw);
+});
 
+
+function addInteractions() {
+  draw = new Draw({ source, type: "LineString" });
+  map.addInteraction(draw);
   snap = new Snap({ source });
   map.addInteraction(snap);
 
   draw.on("drawend", (event) => {
     const feature = event.feature;
     const featureGeoJson = geoJsonFormat.writeFeature(feature);
-
-    actionHistory.push({
-      type: "draw",
-      featureGeoJson,
-      _featureRef: feature,
-    });
-
-    saveHistory();
+    actionHistory.push({ type: "draw", featureGeoJson, _featureRef: feature });
+    saveHistory(); // Save immediately after drawing
   });
 }
-
 addInteractions();
 
 function undoDraw() {
-  if (actionHistory.length === 0) {
-    alert("Không có thao tác nào để undo");
-    return;
-  }
-
+  if (actionHistory.length === 0) return alert("Không có thao tác nào để undo");
   const lastAction = actionHistory.pop();
 
   if (lastAction.type === "draw") {
-    // Nếu đang ở phiên hiện tại, có thể dùng _featureRef
-    if (lastAction._featureRef) {
-      source.removeFeature(lastAction._featureRef);
-    } else {
-      // Nếu đã reload → tạo lại feature từ GeoJSON
-      const feature = geoJsonFormat.readFeature(lastAction.featureGeoJson);
-      source.removeFeature(feature);
-    }
+    const feature = lastAction._featureRef || geoJsonFormat.readFeature(lastAction.featureGeoJson);
+    source.removeFeature(feature);
   } else if (lastAction.type === "modify") {
-    const features = source.getFeatures();
-    const target = features.find((f) => f.ol_uid === lastAction.featureId);
-    if (target) {
+    const feature = source.getFeatures().find(f => f.ol_uid === lastAction.featureId);
+    if (feature) {
       const oldGeom = geoJsonFormat.readGeometry(lastAction.oldGeometry);
-      target.setGeometry(oldGeom);
+      feature.setGeometry(oldGeom);
     }
   }
-
   saveHistory();
   map.render();
 }
 
-// Lưu actionHistory vào localStorage
 function saveHistory() {
   const serializable = actionHistory.map((a) => {
     if (a.type === "draw") {
@@ -208,35 +188,24 @@ function saveHistory() {
         type: "modify",
         featureId: a.featureId,
         oldGeometry: a.oldGeometry,
+        newGeometry: a.newGeometry || null, // Ensure we track new geometry
       };
     }
   });
-
   localStorage.setItem("actionHistory", JSON.stringify(serializable));
 }
 
-// ----- Lắng nghe sự thay đổi các input để update style variables -----
-const inputListener = (event) => {
-  const variableName = event.target.name;
-  if (event.target.type === "radio") {
-    styleVariables[variableName] = event.target.value;
-  } else {
-    styleVariables[variableName] = parseFloat(event.target.value);
-  }
+
+// ====== UI INPUT LISTENERS ======
+document.querySelectorAll("input.uniform").forEach(input => input.addEventListener("input", (e) => {
+  const variableName = e.target.name;
+  styleVariables[variableName] = e.target.type === "radio" ? e.target.value : parseFloat(e.target.value);
   vector.updateStyleVariables(styleVariables);
   const valueSpan = document.getElementById(`value-${variableName}`);
-  if (valueSpan) {
-    valueSpan.textContent = String(styleVariables[variableName]);
-  }
+  if (valueSpan) valueSpan.textContent = String(styleVariables[variableName]);
   map.render();
-};
+}));
 
-document
-  .querySelectorAll("input.uniform")
-  .forEach((input) => input.addEventListener("input", inputListener));
-document
-  .querySelectorAll("input.rebuild")
-  .forEach((input) => input.addEventListener("input", rebuildStyle));
+document.querySelectorAll("input.rebuild").forEach(input => input.addEventListener("input", rebuildStyle));
 
-// ----- Giả sử có một nút (button) cho undo với id 'undo-btn' -----
 document.getElementById("undo-btn").addEventListener("click", undoDraw);
