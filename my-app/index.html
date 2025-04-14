@@ -2,63 +2,110 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <title>Draw and Modify Features</title>
+    <title>Draw lines rendered with WebGL</title>
     <link rel="stylesheet" href="node_modules/ol/ol.css">
     <style>
       .map {
         width: 100%;
         height: 400px;
       }
-      .ol-tooltip {
-        position: relative;
-        background: rgba(0, 0, 0, 0.5);
-        border-radius: 4px;
-        color: white;
-        padding: 4px 8px;
-        opacity: 0.7;
-        white-space: nowrap;
-        font-size: 12px;
-        cursor: default;
-        user-select: none;
+      .form-group label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
       }
-      .ol-tooltip-measure {
-        opacity: 1;
-        font-weight: bold;
-      }
-      .ol-tooltip-static {
-        background-color: #ffcc33;
-        color: black;
-        border: 1px solid white;
-      }
-      .ol-tooltip-measure:before,
-      .ol-tooltip-static:before {
-        border-top: 6px solid rgba(0, 0, 0, 0.5);
-        border-right: 6px solid transparent;
-        border-left: 6px solid transparent;
-        content: "";
-        position: absolute;
-        bottom: -6px;
-        margin-left: -7px;
-        left: 50%;
-      }
-      .ol-tooltip-static:before {
-        border-top-color: #ffcc33;
+      .form-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
     </style>
   </head>
   <body>
     <div id="map" class="map"></div>
     <form>
-      <label for="type">Geometry type &nbsp;</label>
-      <select id="type">
-        <option value="Point">Point</option>
-        <option value="LineString">LineString</option>
-        <option value="Polygon">Polygon</option>
-        <option value="Circle">Circle</option>
-        <option value="length">Length (LineString)</option>
-        <option value="area">Area (Polygon)</option>
-      </select>
+      <div class="form-group">Cap type &nbsp;
+        <label class="radio-inline">
+          <input type="radio" class="uniform" name="capType" value="butt" checked/> <code>butt</code>&nbsp;
+        </label>
+        <label class="radio-inline">
+          <input type="radio" class="uniform" name="capType" value="round"/> <code>round</code>&nbsp;
+        </label>
+        <label class="radio-inline">
+          <input type="radio" class="uniform" name="capType" value="square"/> <code>square</code>&nbsp;
+        </label>
+      </div>
+      <div class="form-group">Join type &nbsp;
+        <label class="radio-inline">
+          <input type="radio" class="uniform" name="joinType" value="miter" checked/> <code>miter</code>&nbsp;
+        </label>
+        <label class="radio-inline">
+          <input type="radio" class="uniform" name="joinType" value="round"/> <code>round</code>&nbsp;
+        </label>
+        <label class="radio-inline">
+          <input type="radio" class="uniform" name="joinType" value="bevel"/> <code>bevel</code>&nbsp;
+        </label>
+      </div>
+      <div class="form-group">
+        <label>
+          Line width (pixels)
+          <input type="range" class="uniform" name="width" min="1" max="40" value="8">
+        </label>
+        <span id="value-width">12</span>
+      </div>
+      <div class="form-group">
+        <label>
+          Miter limit (ratio)
+          <input type="range" class="uniform" name="miterLimit" min="1" max="20" value="10" step="0.1">
+        </label>
+        <span id="value-miterLimit">10</span>
+      </div>
+      <div class="form-group">
+        <label>
+          Line offset (pixels)
+          <input type="range" class="uniform" name="offset" min="-40" max="40" value="0">
+        </label>
+        <span id="value-offset">0</span>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" class="rebuild" id="dashEnable">
+          Enable dashes
+        </label>
+        </div>
+      <div class="form-group" style="margin-left: 18px">
+        <label>
+          Line dash pattern (px)
+          <input type="number" class="uniform" name="dashLength1" min="0" max="100" value="25">
+          <input type="number" class="uniform" name="dashLength2" min="0" max="100" value="15">
+          <input type="number" class="uniform" name="dashLength3" min="0" max="100" value="15">
+          <input type="number" class="uniform" name="dashLength4" min="0" max="100" value="15">
+        </label>
+      </div>
+      <div class="form-group" style="margin-left: 18px">
+        <label>
+          Line dash offset (pixels)
+          <input type="range" class="uniform" name="dashOffset" min="-200" max="200" value="0">
+        </label>
+        <span id="value-dashOffset">0</span>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" class="rebuild" id="patternEnable">
+          Enable image pattern
+        </label>
+      </div>
+      <div class="form-group" style="margin-left: 18px">
+        <label>
+          Pattern spacing (pixels)
+          <input type="range" class="uniform" name="patternSpacing" min="0" max="64" value="0">
+        </label>
+        <span id="value-patternSpacing">0</span>
+      </div>
+    
     </form>
+    <button id="undo-btn">Undo</button>
 
     <script type="module" src="main.js"></script>
   </body>
